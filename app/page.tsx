@@ -255,7 +255,18 @@ function AgentCard({ agent, gatewayPort, gatewayToken, t, testResult }: { agent:
       <div className="space-y-2">
         <div>
           <span className="text-xs text-[var(--text-muted)] block mb-1">{t("agent.model")}</span>
-          <ModelBadge model={agent.model} />
+          <div className="flex items-center gap-2">
+            <ModelBadge model={agent.model} />
+            {testResult === undefined ? (
+              <span className="text-xs text-[var(--text-muted)]">--</span>
+            ) : testResult === null ? (
+              <span className="text-xs text-[var(--text-muted)] animate-pulse">⏳</span>
+            ) : testResult.ok ? (
+              <span className="text-green-400 text-sm" title={`${testResult.elapsed}ms${testResult.text ? ' · ' + testResult.text : ''}`}>✅</span>
+            ) : (
+              <span className="text-red-400 text-sm cursor-help" title={testResult.error || ''}>❌</span>
+            )}
+          </div>
         </div>
 
         <div>
@@ -310,22 +321,7 @@ function AgentCard({ agent, gatewayPort, gatewayToken, t, testResult }: { agent:
           </div>
         )}
 
-        {testResult && (
-          <div className={`mt-2 p-2 rounded-lg text-xs ${testResult.ok ? "bg-green-500/10 border border-green-500/30" : "bg-red-500/10 border border-red-500/30"}`}>
-            <div className="flex items-center justify-between">
-              <span className={testResult.ok ? "text-green-400" : "text-red-400"}>
-                {testResult.ok ? `✅ ${t("home.testOk")}` : `❌ ${t("home.testFail")}`}
-              </span>
-              <span className="text-[var(--text-muted)]">{testResult.elapsed}ms</span>
-            </div>
-            {testResult.ok && testResult.text && (
-              <p className="text-[var(--text-muted)] mt-1 truncate">{testResult.text}</p>
-            )}
-            {!testResult.ok && testResult.error && (
-              <p className="text-red-400/80 mt-1 truncate">{testResult.error}</p>
-            )}
-          </div>
-        )}
+        {/* test result moved inline next to model badge */}
       </div>
     </div>
   );
@@ -376,19 +372,22 @@ export default function Home() {
 
   const testAllAgents = useCallback(() => {
     setTesting(true);
-    setTestResults(null);
+    // Set all agents to null (testing indicator) so UI shows ⏳
+    const pending: Record<string, any> = {};
+    if (data) for (const a of data.agents) pending[a.id] = null;
+    setTestResults(pending);
     fetch("/api/test-agents", { method: "POST" })
       .then((r) => r.json())
-      .then((data) => {
-        if (data.results) {
+      .then((resp) => {
+        if (resp.results) {
           const map: Record<string, { ok: boolean; text?: string; error?: string; elapsed: number }> = {};
-          for (const r of data.results) map[r.agentId] = r;
+          for (const r of resp.results) map[r.agentId] = r;
           setTestResults(map);
         }
       })
       .catch(() => {})
       .finally(() => setTesting(false));
-  }, []);
+  }, [data]);
 
   // 定时刷新
   useEffect(() => {
