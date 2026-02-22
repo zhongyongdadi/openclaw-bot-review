@@ -241,7 +241,7 @@ function ModelBadge({ model }: { model: string }) {
 }
 
 // Agent 卡片
-function AgentCard({ agent, gatewayPort, gatewayToken, t, testResult, platformTestResults }: { agent: Agent; gatewayPort: number; gatewayToken?: string; t: TFunc; testResult?: { ok: boolean; text?: string; error?: string; elapsed: number } | null; platformTestResults?: Record<string, PlatformTestResult | null> }) {
+function AgentCard({ agent, gatewayPort, gatewayToken, t, testResult, platformTestResults, sessionTestResult }: { agent: Agent; gatewayPort: number; gatewayToken?: string; t: TFunc; testResult?: { ok: boolean; text?: string; error?: string; elapsed: number } | null; platformTestResults?: Record<string, PlatformTestResult | null>; sessionTestResult?: { ok: boolean; reply?: string; error?: string; elapsed: number } | null }) {
   const sessionKey = `agent:${agent.id}:main`;
   let sessionUrl = `http://localhost:${gatewayPort}/chat?session=${encodeURIComponent(sessionKey)}`;
   if (gatewayToken) sessionUrl += `&token=${encodeURIComponent(gatewayToken)}`;
@@ -265,7 +265,18 @@ function AgentCard({ agent, gatewayPort, gatewayToken, t, testResult, platformTe
       <div className="flex items-center gap-3 mb-3">
         <span className="text-3xl">{agent.emoji}</span>
         <div>
-          <h3 className="text-lg font-semibold text-[var(--text)]">{agent.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-[var(--text)]">{agent.name}</h3>
+            {sessionTestResult === undefined ? (
+              <span className="text-xs text-[var(--text-muted)]">--</span>
+            ) : sessionTestResult === null ? (
+              <span className="text-xs text-[var(--text-muted)] animate-pulse">⏳</span>
+            ) : sessionTestResult.ok ? (
+              <span className="text-green-400 text-sm cursor-help" title={`${sessionTestResult.elapsed}ms${sessionTestResult.reply ? ' · ' + sessionTestResult.reply : ''}`}>✅</span>
+            ) : (
+              <span className="text-red-400 text-sm cursor-help" title={sessionTestResult.error || ''}>❌</span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -381,6 +392,8 @@ export default function Home() {
   const [testing, setTesting] = useState(false);
   const [platformTestResults, setPlatformTestResults] = useState<Record<string, PlatformTestResult | null> | null>(null);
   const [testingPlatforms, setTestingPlatforms] = useState(false);
+  const [sessionTestResults, setSessionTestResults] = useState<Record<string, { ok: boolean; reply?: string; error?: string; elapsed: number } | null> | null>(null);
+  const [testingSessions, setTestingSessions] = useState(false);
 
   const RANGE_LABELS: Record<TimeRange, string> = { daily: t("range.daily"), weekly: t("range.weekly"), monthly: t("range.monthly") };
 
@@ -454,6 +467,24 @@ export default function Home() {
       })
       .catch(() => {})
       .finally(() => setTestingPlatforms(false));
+  }, [data]);
+
+  const testAllSessions = useCallback(() => {
+    setTestingSessions(true);
+    const pending: Record<string, any> = {};
+    if (data) for (const a of data.agents) pending[a.id] = null;
+    setSessionTestResults(pending);
+    fetch("/api/test-sessions", { method: "POST" })
+      .then((r) => r.json())
+      .then((resp) => {
+        if (resp.results) {
+          const map: Record<string, { ok: boolean; reply?: string; error?: string; elapsed: number }> = {};
+          for (const r of resp.results) map[r.agentId] = r;
+          setSessionTestResults(map);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setTestingSessions(false));
   }, [data]);
 
   // 定时刷新
@@ -536,13 +567,20 @@ export default function Home() {
           >
             {testingPlatforms ? t("home.testingPlatforms") : t("home.testPlatforms")}
           </button>
+          <button
+            onClick={testAllSessions}
+            disabled={testingSessions}
+            className="px-4 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-[var(--text)] text-sm font-medium hover:border-[var(--accent)] transition disabled:opacity-50 cursor-pointer"
+          >
+            {testingSessions ? t("home.testingSessions") : t("home.testSessions")}
+          </button>
         </div>
       </div>
 
       {/* 卡片墙 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {data.agents.map((agent) => (
-          <AgentCard key={agent.id} agent={agent} gatewayPort={data.gateway?.port || 18789} gatewayToken={data.gateway?.token} t={t} testResult={testResults?.[agent.id]} platformTestResults={platformTestResults || undefined} />
+          <AgentCard key={agent.id} agent={agent} gatewayPort={data.gateway?.port || 18789} gatewayToken={data.gateway?.token} t={t} testResult={testResults?.[agent.id]} platformTestResults={platformTestResults || undefined} sessionTestResult={sessionTestResults?.[agent.id]} />
         ))}
       </div>
 
