@@ -1,10 +1,10 @@
 # OpenClaw Bot Dashboard
 
-A lightweight web dashboard for viewing all your [OpenClaw](https://github.com/openclaw/openclaw) bot configurations at a glance.
+A lightweight web dashboard for viewing all your [OpenClaw](https://github.com/openclaw/openclaw) Bots/Agents/Models/Sessions status at a glance.
 
 ## Background
 
-When running multiple OpenClaw agents across different platforms (Feishu, Discord, etc.), it becomes hard to track which bot uses which model. This dashboard reads your `openclaw.json` config and displays everything in a clean UI.
+When running multiple OpenClaw agents across different platforms (Feishu, Discord, etc.), it becomes hard to track which bot uses which model. This dashboard reads your `openclaw.json` config and displays Bots/Agents/Models/Sessions status in a clean UI.
 
 ## Features
 
