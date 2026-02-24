@@ -184,6 +184,11 @@ const translations: Record<Locale, Record<string, string>> = {
     "skills.noDesc": "无描述",
     "skills.source.builtin": "内置",
     "skills.source.custom": "自定义",
+
+    // gateway status
+    "gateway.healthy": "Gateway 运行正常",
+    "gateway.unhealthy": "Gateway 异常",
+    "gateway.fetchError": "无法检查 Gateway 状态",
   },
   en: {
     // layout
@@ -364,6 +369,11 @@ const translations: Record<Locale, Record<string, string>> = {
     "skills.noDesc": "No description",
     "skills.source.builtin": "Built-in",
     "skills.source.custom": "Custom",
+
+    // gateway status
+    "gateway.healthy": "Gateway is running",
+    "gateway.unhealthy": "Gateway is down",
+    "gateway.fetchError": "Cannot check Gateway status",
   },
 };
 

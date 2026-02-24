@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useI18n } from "@/lib/i18n";
+import { GatewayStatus } from "./gateway-status";
 
 interface Platform {
   name: string;
@@ -609,6 +610,11 @@ export default function Home() {
             {testingSessions ? t("home.testingSessions") : t("home.testSessions")}
           </button>
         </div>
+      </div>
+
+      {/* Gateway 状态 */}
+      <div className="mb-4">
+        <GatewayStatus />
       </div>
 
       {/* 卡片墙 */}

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 // 后台告警检查组件 - 服务启动时自动开始
 export function AlertMonitor() {
   const [enabled, setEnabled] = useState(false);
-  const [interval, setInterval] = useState(10);
+  const [checkInterval, setCheckInterval] = useState(10);
   const [lastResults, setLastResults] = useState<string[]>([]);
 
   useEffect(() => {
