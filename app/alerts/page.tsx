@@ -240,7 +240,6 @@ export default function AlertsPage() {
                 onChange={(e) => handleIntervalChange(Number(e.target.value))}
                 className="px-2 py-1 text-sm rounded border border-[var(--border)] bg-[var(--card)] text-[var(--text)]"
               >
-                <option value={1}>{locale === "zh" ? "1 分钟" : "1 minute"}</option>
                 <option value={5}>{locale === "zh" ? "5 分钟" : "5 minutes"}</option>
                 <option value={10}>{locale === "zh" ? "10 分钟" : "10 minutes"}</option>
                 <option value={30}>{locale === "zh" ? "30 分钟" : "30 minutes"}</option>
