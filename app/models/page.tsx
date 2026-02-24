@@ -189,6 +189,26 @@ export default function ModelsPage() {
         </div>
       </div>
 
+      {/* 主模型和 Fallback 模型 */}
+      <div className="mb-6 p-4 rounded-xl border border-[var(--border)] bg-[var(--card)] flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--text-muted)]">{t("models.defaultModel")}:</span>
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-green-500/20 text-green-300 border-green-500/30">
+            🧠 {data.defaults.model}
+          </span>
+        </div>
+        {data.defaults.fallbacks.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[var(--text-muted)]">{t("models.fallbackModels")}:</span>
+            {data.defaults.fallbacks.map((f, i) => (
+              <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-yellow-500/20 text-yellow-300 border-yellow-500/30">
+                🔄 {f}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="space-y-6">
         {data.providers.map((provider) => (
           <div

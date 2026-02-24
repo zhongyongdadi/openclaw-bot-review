@@ -126,6 +126,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "models.colAvgResponse": "平均响应",
     "models.colTest": "测试",
     "models.noExplicitModels": "无显式模型定义（通过 provider 名称推断）",
+    "models.defaultModel": "主模型",
+    "models.fallbackModels": "Fallback 模型",
 
     // stats page
     "stats.title": "消息统计",
@@ -311,6 +313,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "models.colAvgResponse": "Avg Response",
     "models.colTest": "Test",
     "models.noExplicitModels": "No explicit model definitions (inferred from provider name)",
+    "models.defaultModel": "Default Model",
+    "models.fallbackModels": "Fallback Models",
 
     // stats page
     "stats.title": "Message Statistics",
