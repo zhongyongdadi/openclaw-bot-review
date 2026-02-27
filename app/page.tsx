@@ -39,6 +39,7 @@ interface GroupChat {
 interface ConfigData {
   agents: Agent[];
   defaults: { model: string; fallbacks: string[] };
+  providers?: { id: string; accessMode?: "auth" | "api_key" }[];
   gateway?: { port: number; token?: string };
   groupChats?: GroupChat[];
 }
@@ -231,7 +232,7 @@ function PlatformBadge({ platform, agentId, gatewayPort, gatewayToken, t, testRe
 }
 
 // 模型标签
-function ModelBadge({ model }: { model: string }) {
+function ModelBadge({ model, accessMode }: { model: string; accessMode?: "auth" | "api_key" }) {
   const [provider, modelName] = model.includes("/")
     ? model.split("/", 2)
     : ["default", model];
@@ -249,7 +250,7 @@ function ModelBadge({ model }: { model: string }) {
         colors[provider] || "bg-gray-500/20 text-gray-300 border-gray-500/30"
       }`}
     >
-      🧠 {modelName}
+      🧠 {modelName}{accessMode ? ` (${accessMode})` : ""}
     </span>
   );
 }
@@ -318,10 +319,12 @@ function AgentStatusBadge({ state, t }: { state?: string; t: TFunc }) {
 }
 
 // Agent 卡片
-function AgentCard({ agent, gatewayPort, gatewayToken, t, testResult, platformTestResults, sessionTestResult, agentState, dmSessionResults }: { agent: Agent; gatewayPort: number; gatewayToken?: string; t: TFunc; testResult?: { ok: boolean; text?: string; error?: string; elapsed: number } | null; platformTestResults?: Record<string, PlatformTestResult | null>; sessionTestResult?: { ok: boolean; reply?: string; error?: string; elapsed: number } | null; agentState?: string; dmSessionResults?: Record<string, PlatformTestResult | null> }) {
+function AgentCard({ agent, gatewayPort, gatewayToken, t, testResult, platformTestResults, sessionTestResult, agentState, dmSessionResults, providerAccessModeMap }: { agent: Agent; gatewayPort: number; gatewayToken?: string; t: TFunc; testResult?: { ok: boolean; text?: string; error?: string; elapsed: number } | null; platformTestResults?: Record<string, PlatformTestResult | null>; sessionTestResult?: { ok: boolean; reply?: string; error?: string; elapsed: number } | null; agentState?: string; dmSessionResults?: Record<string, PlatformTestResult | null>; providerAccessModeMap?: Record<string, "auth" | "api_key"> }) {
   const sessionKey = `agent:${agent.id}:main`;
   let sessionUrl = `http://localhost:${gatewayPort}/chat?session=${encodeURIComponent(sessionKey)}`;
   if (gatewayToken) sessionUrl += `&token=${encodeURIComponent(gatewayToken)}`;
+  const modelProvider = agent.model.includes("/") ? agent.model.split("/", 1)[0] : "default";
+  const modelAccessMode = providerAccessModeMap?.[modelProvider];
 
   function formatTimeAgo(ts: number): string {
     const diff = Date.now() - ts;
@@ -368,7 +371,7 @@ function AgentCard({ agent, gatewayPort, gatewayToken, t, testResult, platformTe
         <div>
           <span className="text-xs text-[var(--text-muted)] block">{t("agent.model")}</span>
           <div className="flex items-center gap-2">
-            <ModelBadge model={agent.model} />
+            <ModelBadge model={agent.model} accessMode={modelAccessMode} />
             {testResult === undefined ? (
               <span className="text-xs text-[var(--text-muted)]">--</span>
             ) : testResult === null ? (
@@ -717,6 +720,12 @@ export default function Home() {
     );
   }
 
+  const providerAccessModeMap: Record<string, "auth" | "api_key"> = {};
+  for (const p of data.providers || []) {
+    if (!p?.id || !p.accessMode) continue;
+    providerAccessModeMap[p.id] = p.accessMode;
+  }
+
   return (
     <div className="p-3 max-w-6xl mx-auto">
       {/* 头部 */}
@@ -794,7 +803,7 @@ export default function Home() {
       {/* 卡片墙 */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {data.agents.map((agent) => (
-          <AgentCard key={agent.id} agent={agent} gatewayPort={data.gateway?.port || 18789} gatewayToken={data.gateway?.token} t={t} testResult={testResults?.[agent.id]} platformTestResults={platformTestResults || undefined} sessionTestResult={sessionTestResults?.[agent.id]} agentState={agentStates[agent.id]} dmSessionResults={dmSessionResults || undefined} />
+          <AgentCard key={agent.id} agent={agent} gatewayPort={data.gateway?.port || 18789} gatewayToken={data.gateway?.token} t={t} testResult={testResults?.[agent.id]} platformTestResults={platformTestResults || undefined} sessionTestResult={sessionTestResults?.[agent.id]} agentState={agentStates[agent.id]} dmSessionResults={dmSessionResults || undefined} providerAccessModeMap={providerAccessModeMap} />
         ))}
       </div>
 
