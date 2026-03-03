@@ -15,6 +15,7 @@ const NAV_ITEMS = [
     group: "nav.overview",
     items: [
       { href: "/", icon: "🤖", labelKey: "nav.agents" },
+      { href: "/pixel-office", icon: "🎮", labelKey: "nav.pixelOffice" },
       { href: "/models", icon: "🧠", labelKey: "nav.models" },
     ],
   },
@@ -24,7 +25,6 @@ const NAV_ITEMS = [
       { href: "/sessions", icon: "💬", labelKey: "nav.sessions" },
       { href: "/stats", icon: "📊", labelKey: "nav.stats" },
       { href: "/alerts", icon: "🔔", labelKey: "nav.alerts" },
-      { href: "/pixel-office", icon: "🎮", labelKey: "nav.pixelOffice" },
     ],
   },
   {
