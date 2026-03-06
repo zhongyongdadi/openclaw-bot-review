@@ -207,7 +207,7 @@ function getFeishuUserOpenIds(agentIds: string[], sessionsMap: Map<string, any>)
 function getChannelDirectPeerIds(
   agentIds: string[],
   sessionsMap: Map<string, any>,
-  channel: "telegram" | "whatsapp"
+  channel: string
 ): Record<string, string> {
   const map: Record<string, string> = {};
   const pattern = new RegExp(`^agent:[^:]+:${channel}:direct:(.+)$`);
@@ -328,16 +328,21 @@ export async function GET() {
 
     // 从预读的 sessions 数据获取飞书用户 open_id
     const feishuUserOpenIds = getFeishuUserOpenIds(agentIds, sessionsMap);
-    const telegramDirectPeerIds = getChannelDirectPeerIds(agentIds, sessionsMap, "telegram");
-    const whatsappDirectPeerIds = getChannelDirectPeerIds(agentIds, sessionsMap, "whatsapp");
-    const discordDmAllowFrom = channels.discord?.dm?.allowFrom || [];
-
-    // Build a set of agent IDs that have explicit feishu bindings
-    const boundFeishuAgentIds = new Set(
+    const enabledChannelNames: string[] = Object.entries(channels)
+      .filter(([, cfg]) => cfg && typeof cfg === "object" && (cfg as any).enabled !== false)
+      .map(([channelName]) => channelName);
+    const boundChannelNames: string[] = Array.from(new Set(
       bindings
-        .filter((b: any) => b.match?.channel === "feishu")
-        .map((b: any) => b.agentId)
-    );
+        .map((b: any) => b.match?.channel)
+        .filter((v: any): v is string => typeof v === "string" && v.length > 0)
+    ));
+    const discoverChannelNames: string[] = Array.from(new Set([...enabledChannelNames, ...boundChannelNames]));
+    const directPeerIdsByChannel: Record<string, Record<string, string>> = {};
+    for (const channelName of discoverChannelNames) {
+      if (channelName === "feishu") continue;
+      directPeerIdsByChannel[channelName] = getChannelDirectPeerIds(agentIds, sessionsMap, channelName);
+    }
+    const discordDmAllowFrom = channels.discord?.dm?.allowFrom || [];
 
     // 构建 agent 详情
     const agents = await Promise.all(agentList.map(async (agent: any) => {
@@ -349,6 +354,11 @@ export async function GET() {
 
       // 查找绑定的平台
       const platforms: { name: string; accountId?: string; appId?: string; botOpenId?: string; botUserId?: string }[] = [];
+      const addPlatform = (platform: { name: string; accountId?: string; appId?: string; botOpenId?: string; botUserId?: string }) => {
+        if (!platform?.name) return;
+        const exists = platforms.some((p) => p.name === platform.name && (p.accountId || "") === (platform.accountId || ""));
+        if (!exists) platforms.push(platform);
+      };
 
       // 检查飞书绑定 (explicit binding)
       const feishuBinding = bindings.find(
@@ -359,7 +369,7 @@ export async function GET() {
         const acc = feishuAccounts[accountId];
         const appId = acc?.appId;
         const userOpenId = feishuUserOpenIds[id] || null;
-        platforms.push({ name: "feishu", accountId, appId, ...(userOpenId && { botOpenId: userOpenId }) });
+        addPlatform({ name: "feishu", accountId, appId, ...(userOpenId && { botOpenId: userOpenId }) });
       }
 
       // If no explicit binding, check if there's a feishu account matching this agent id
@@ -367,7 +377,7 @@ export async function GET() {
         const acc = feishuAccounts[id];
         const appId = acc?.appId;
         const userOpenId = feishuUserOpenIds[id] || null;
-        platforms.push({ name: "feishu", accountId: id, appId, ...(userOpenId && { botOpenId: userOpenId }) });
+        addPlatform({ name: "feishu", accountId: id, appId, ...(userOpenId && { botOpenId: userOpenId }) });
       }
 
       // main agent 特殊处理：默认绑定所有未显式绑定的 channel
@@ -378,43 +388,30 @@ export async function GET() {
           const acc = feishuAccounts["main"];
           const appId = acc?.appId || channels.feishu?.appId;
           const userOpenId = feishuUserOpenIds["main"] || null;
-          platforms.push({ name: "feishu", accountId: "main", appId, ...(userOpenId && { botOpenId: userOpenId }) });
+          addPlatform({ name: "feishu", accountId: "main", appId, ...(userOpenId && { botOpenId: userOpenId }) });
         }
-        if (channels.discord && channels.discord.enabled !== false) {
-          const botUserId = discordDmAllowFrom[0] || null;
-          platforms.push({ name: "discord", ...(botUserId && { botUserId }) });
-        }
-        if (channels.telegram && channels.telegram.enabled !== false) {
-          const botUserId = telegramDirectPeerIds[id] || null;
-          platforms.push({ name: "telegram", ...(botUserId && { botUserId }) });
-        }
-        if (channels.whatsapp && channels.whatsapp.enabled !== false) {
-          const botUserId = whatsappDirectPeerIds[id] || null;
-          platforms.push({ name: "whatsapp", ...(botUserId && { botUserId }) });
+
+        // main agent 默认展示所有已启用 channel（feishu 已单独处理）
+        for (const channelName of enabledChannelNames) {
+          if (channelName === "feishu") continue;
+          const botUserId = directPeerIdsByChannel[channelName]?.[id]
+            || (channelName === "discord" ? (discordDmAllowFrom[0] || null) : null);
+          addPlatform({ name: channelName, ...(botUserId && { botUserId }) });
         }
       }
 
-      // Also detect discord for non-main agents if they have discord bindings
+      // 非 main agent：按显式 bindings 展示 channel（自动支持新增 channel）
       if (id !== "main") {
-        const discordBinding = bindings.find(
-          (b: any) => b.agentId === id && b.match?.channel === "discord"
-        );
-        if (discordBinding) {
-          platforms.push({ name: "discord" });
-        }
-        const telegramBinding = bindings.find(
-          (b: any) => b.agentId === id && b.match?.channel === "telegram"
-        );
-        if (telegramBinding) {
-          const botUserId = telegramDirectPeerIds[id] || null;
-          platforms.push({ name: "telegram", ...(botUserId && { botUserId }) });
-        }
-        const whatsappBinding = bindings.find(
-          (b: any) => b.agentId === id && b.match?.channel === "whatsapp"
-        );
-        if (whatsappBinding) {
-          const botUserId = whatsappDirectPeerIds[id] || null;
-          platforms.push({ name: "whatsapp", ...(botUserId && { botUserId }) });
+        const seenBindingChannels = new Set<string>();
+        for (const binding of bindings) {
+          if (binding?.agentId !== id) continue;
+          const channelName = binding?.match?.channel;
+          if (!channelName || channelName === "feishu") continue;
+          if (seenBindingChannels.has(channelName)) continue;
+          seenBindingChannels.add(channelName);
+          const botUserId = directPeerIdsByChannel[channelName]?.[id] || null;
+          const accountId = typeof binding?.match?.accountId === "string" ? binding.match.accountId : undefined;
+          addPlatform({ name: channelName, ...(accountId && { accountId }), ...(botUserId && { botUserId }) });
         }
       }
 

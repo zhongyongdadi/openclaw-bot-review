@@ -154,50 +154,52 @@ function PlatformBadge({
 }) {
   const pName = platform.name;
   const badgeWidthClass = "w-[8.25rem]";
-  const remoteLogoSrc = pName === "feishu"
-    ? "https://cdn.simpleicons.org/lark/2E5BFF"
-    : pName === "telegram"
-    ? "https://cdn.simpleicons.org/telegram/26A5E4"
-    : pName === "whatsapp"
-    ? "https://cdn.simpleicons.org/whatsapp/25D366"
-    : "https://cdn.simpleicons.org/discord/5865F2";
-  const logoFallbackSrc = pName === "feishu"
-    ? "/assets/platform-logos/feishu-favicon.png?v=1"
-    : pName === "telegram"
-    ? "/assets/platform-logos/telegram.svg"
-    : pName === "whatsapp"
-    ? "/assets/platform-logos/whatsapp.svg"
-    : "/assets/platform-logos/discord.svg";
-  const logoSizeClass = pName === "feishu" ? "w-[1.09375rem] h-[1.09375rem]" : "w-3.5 h-3.5";
+  const knownMeta: Record<string, { remoteLogoSrc: string; logoFallbackSrc: string; badgeStyle: string; logoSizeClass?: string }> = {
+    feishu: {
+      remoteLogoSrc: "https://cdn.simpleicons.org/lark/2E5BFF",
+      logoFallbackSrc: "/assets/platform-logos/feishu-favicon.png?v=1",
+      badgeStyle: "bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/40 hover:border-blue-400",
+      logoSizeClass: "w-[1.09375rem] h-[1.09375rem]",
+    },
+    discord: {
+      remoteLogoSrc: "https://cdn.simpleicons.org/discord/5865F2",
+      logoFallbackSrc: "/assets/platform-logos/discord.svg",
+      badgeStyle: "bg-purple-500/20 text-purple-300 border border-purple-500/30 hover:bg-purple-500/40 hover:border-purple-400",
+    },
+    telegram: {
+      remoteLogoSrc: "https://cdn.simpleicons.org/telegram/26A5E4",
+      logoFallbackSrc: "/assets/platform-logos/telegram.svg",
+      badgeStyle: "bg-sky-500/20 text-sky-300 border border-sky-500/30 hover:bg-sky-500/40 hover:border-sky-400",
+    },
+    whatsapp: {
+      remoteLogoSrc: "https://cdn.simpleicons.org/whatsapp/25D366",
+      logoFallbackSrc: "/assets/platform-logos/whatsapp.svg",
+      badgeStyle: "bg-green-500/20 text-green-300 border border-green-500/30 hover:bg-green-500/40 hover:border-green-400",
+    },
+    qqbot: {
+      remoteLogoSrc: "https://cdn.simpleicons.org/tencentqq/12B7F5",
+      logoFallbackSrc: "/assets/platform-logos/telegram.svg",
+      badgeStyle: "bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/40 hover:border-blue-400",
+    },
+  };
+  const meta = knownMeta[pName];
+  const logoSizeClass = meta?.logoSizeClass || "w-3.5 h-3.5";
 
   let sessionKey: string;
   if (pName === "feishu" && platform.botOpenId) {
     sessionKey = `agent:${agentId}:feishu:direct:${platform.botOpenId}`;
-  } else if (pName === "discord" && platform.botUserId) {
-    sessionKey = `agent:${agentId}:discord:direct:${platform.botUserId}`;
-  } else if (pName === "telegram" && platform.botUserId) {
-    sessionKey = `agent:${agentId}:telegram:direct:${platform.botUserId}`;
-  } else if (pName === "whatsapp" && platform.botUserId) {
-    sessionKey = `agent:${agentId}:whatsapp:direct:${platform.botUserId}`;
+  } else if (platform.botUserId) {
+    sessionKey = `agent:${agentId}:${pName}:direct:${platform.botUserId}`;
   } else {
     sessionKey = `agent:${agentId}:main`;
   }
   let sessionUrl = buildGatewayUrl(gatewayPort, "/chat", { session: sessionKey }, gatewayHost);
   if (gatewayToken) sessionUrl = buildGatewayUrl(gatewayPort, "/chat", { session: sessionKey, token: gatewayToken }, gatewayHost);
 
-  const badgeStyle = pName === "feishu"
-    ? "bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/40 hover:border-blue-400"
-    : pName === "telegram"
-    ? "bg-sky-500/20 text-sky-300 border border-sky-500/30 hover:bg-sky-500/40 hover:border-sky-400"
-    : pName === "whatsapp"
-    ? "bg-green-500/20 text-green-300 border border-green-500/30 hover:bg-green-500/40 hover:border-green-400"
-    : "bg-purple-500/20 text-purple-300 border border-purple-500/30 hover:bg-purple-500/40 hover:border-purple-400";
-
-  const labelRaw = pName === "feishu" ? t("platform.feishu")
-    : pName === "telegram" ? t("platform.telegram")
-    : pName === "whatsapp" ? t("platform.whatsapp")
-    : t("platform.discord");
-  const label = labelRaw.replace(/^[^\p{L}\p{N}]+/u, "").trim();
+  const badgeStyle = meta?.badgeStyle || "bg-gray-500/20 text-gray-300 border border-gray-500/30 hover:bg-gray-500/40 hover:border-gray-400";
+  const translated = t(`platform.${pName}`);
+  const labelRaw = translated !== `platform.${pName}` ? translated : pName;
+  const label = labelRaw.replace(/^[^\p{L}\p{N}]+/u, "").trim() || pName;
 
   return (
     <div className="inline-flex items-center gap-1.5 max-w-full">
@@ -209,16 +211,22 @@ function PlatformBadge({
         title={t("agent.openChat")}
         className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-all hover:scale-105 hover:shadow-md min-w-0 ${badgeWidthClass} ${badgeStyle}`}
       >
-        <img
-          src={remoteLogoSrc}
-          alt={`${label} logo`}
-          className={`${logoSizeClass} shrink-0`}
-          onError={(e) => {
-            if (e.currentTarget.dataset.fallbackApplied === "1") return;
-            e.currentTarget.dataset.fallbackApplied = "1";
-            e.currentTarget.src = logoFallbackSrc;
-          }}
-        />
+        {meta ? (
+          <img
+            src={meta.remoteLogoSrc}
+            alt={`${label} logo`}
+            className={`${logoSizeClass} shrink-0`}
+            onError={(e) => {
+              if (e.currentTarget.dataset.fallbackApplied === "1") return;
+              e.currentTarget.dataset.fallbackApplied = "1";
+              e.currentTarget.src = meta.logoFallbackSrc;
+            }}
+          />
+        ) : (
+          <span className="inline-flex w-3.5 h-3.5 items-center justify-center rounded bg-white/10 text-[9px] font-semibold shrink-0">
+            {pName.slice(0, 2).toUpperCase()}
+          </span>
+        )}
         <span className="shrink-0">{label}</span>
         {pName === "feishu" && platform.accountId && (
           <span className="opacity-60 truncate max-w-[4.5rem]">({platform.accountId})</span>

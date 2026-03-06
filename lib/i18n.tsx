@@ -117,6 +117,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "platform.discord": "🎮 Discord",
     "platform.telegram": "✈️ Telegram",
     "platform.whatsapp": "💬 WhatsApp",
+    "platform.qqbot": "🐧 QQBot",
 
     // time range
     "range.daily": "按天",
@@ -373,6 +374,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "platform.discord": "🎮 Discord",
     "platform.telegram": "✈️ Telegram",
     "platform.whatsapp": "💬 WhatsApp",
+    "platform.qqbot": "🐧 QQBot",
 
     // time range
     "range.daily": "Daily",
