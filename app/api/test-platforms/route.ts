@@ -4,6 +4,8 @@ import path from "path";
 
 const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
 const CONFIG_PATH = path.join(OPENCLAW_HOME, "openclaw.json");
+const QQBOT_TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken";
+const QQBOT_API_BASE = "https://api.sgroup.qq.com";
 
 interface PlatformTestResult {
   agentId: string;
@@ -369,6 +371,131 @@ function getWhatsappAllowlistUser(whatsappConfig: any): string | null {
   return first ? first.trim() : null;
 }
 
+// Find the most recent qqbot DM user for a given agent
+function getQqbotDmUser(agentId: string): string | null {
+  try {
+    const sessionsPath = path.join(OPENCLAW_HOME, `agents/${agentId}/sessions/sessions.json`);
+    const raw = fs.readFileSync(sessionsPath, "utf-8");
+    const sessions = JSON.parse(raw);
+    let bestId: string | null = null;
+    let bestTime = 0;
+    for (const [key, val] of Object.entries(sessions)) {
+      const m = key.match(/^agent:[^:]+:qqbot:direct:(.+)$/);
+      if (m) {
+        const updatedAt = (val as any).updatedAt || 0;
+        if (updatedAt > bestTime) {
+          bestTime = updatedAt;
+          bestId = m[1];
+        }
+      }
+    }
+    return bestId;
+  } catch {
+    return null;
+  }
+}
+
+function getQqbotAllowlistUser(qqbotConfig: any): string | null {
+  const list = Array.isArray(qqbotConfig?.allowFrom)
+    ? qqbotConfig.allowFrom
+    : Array.isArray(qqbotConfig?.dm?.allowFrom)
+      ? qqbotConfig.dm.allowFrom
+      : [];
+  const first = list.find((v: any) => typeof v === "string" && v.trim().length > 0);
+  return first ? first.trim() : null;
+}
+
+function normalizeQqbotTarget(target: string | null): string | null {
+  if (!target) return null;
+  const raw = target.trim();
+  if (!raw || raw === "*") return null;
+
+  const full = raw.match(/^qqbot:(c2c|group|channel):(.+)$/i);
+  if (full) {
+    return `qqbot:${full[1].toLowerCase()}:${full[2].toUpperCase()}`;
+  }
+
+  const typed = raw.match(/^(c2c|group|channel):(.+)$/i);
+  if (typed) {
+    return `qqbot:${typed[1].toLowerCase()}:${typed[2].toUpperCase()}`;
+  }
+
+  return `qqbot:c2c:${raw.toUpperCase()}`;
+}
+
+function resolveQqbotCredentials(qqbotConfig: any): { accountId: string; appId: string; clientSecret: string } | null {
+  if (!qqbotConfig || qqbotConfig.enabled === false) return null;
+
+  if (
+    typeof qqbotConfig.appId === "string" &&
+    qqbotConfig.appId.trim() &&
+    typeof qqbotConfig.clientSecret === "string" &&
+    qqbotConfig.clientSecret.trim()
+  ) {
+    return {
+      accountId: "default",
+      appId: qqbotConfig.appId.trim(),
+      clientSecret: qqbotConfig.clientSecret.trim(),
+    };
+  }
+
+  const accounts = qqbotConfig.accounts;
+  if (!accounts || typeof accounts !== "object") return null;
+
+  const candidates = [
+    qqbotConfig.defaultAccount,
+    ...Object.keys(accounts),
+  ].filter((v) => typeof v === "string" && v.trim().length > 0) as string[];
+
+  for (const accountId of candidates) {
+    const acc = accounts[accountId];
+    if (
+      acc &&
+      typeof acc.appId === "string" &&
+      acc.appId.trim() &&
+      typeof acc.clientSecret === "string" &&
+      acc.clientSecret.trim()
+    ) {
+      return {
+        accountId,
+        appId: acc.appId.trim(),
+        clientSecret: acc.clientSecret.trim(),
+      };
+    }
+  }
+
+  return null;
+}
+
+async function getQqbotAccessToken(appId: string, clientSecret: string): Promise<{ ok: boolean; token?: string; error?: string }> {
+  try {
+    const resp = await fetch(QQBOT_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appId, clientSecret }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const raw = await resp.text();
+    let data: any = null;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      data = null;
+    }
+
+    if (!resp.ok) {
+      return { ok: false, error: `Token API HTTP ${resp.status}: ${(raw || "").slice(0, 180)}` };
+    }
+    if (!data?.access_token) {
+      return { ok: false, error: `Token API invalid response: ${(raw || "").slice(0, 180)}` };
+    }
+
+    return { ok: true, token: data.access_token };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "Token API request failed" };
+  }
+}
+
 async function testWhatsapp(
   agentId: string,
   gatewayPort: number,
@@ -416,6 +543,98 @@ async function testWhatsapp(
   } catch (err: any) {
     return {
       agentId, platform: "whatsapp", ok: false,
+      error: (err.stderr || err.message || "Unknown error").slice(0, 300),
+      elapsed: Date.now() - startTime,
+    };
+  }
+}
+
+async function testQqbot(
+  agentId: string,
+  qqbotConfig: any,
+  testUserId: string | null,
+  recipientSource: "session" | "allowFrom" | "none"
+): Promise<PlatformTestResult> {
+  const startTime = Date.now();
+  const creds = resolveQqbotCredentials(qqbotConfig);
+  if (!creds) {
+    return {
+      agentId, platform: "qqbot", ok: false,
+      error: "QQBot credentials missing. Configure channels.qqbot.appId/clientSecret (or accounts)",
+      elapsed: Date.now() - startTime,
+    };
+  }
+
+  const tokenResult = await getQqbotAccessToken(creds.appId, creds.clientSecret);
+  if (!tokenResult.ok || !tokenResult.token) {
+    return {
+      agentId, platform: "qqbot", ok: false,
+      error: tokenResult.error || "QQBot token probe failed",
+      elapsed: Date.now() - startTime,
+    };
+  }
+
+  if (!testUserId) {
+    return {
+      agentId, platform: "qqbot", ok: true,
+      detail: `QQBot token OK (account ${creds.accountId}, no DM session found)`,
+      elapsed: Date.now() - startTime,
+    };
+  }
+
+  try {
+    const now = new Date().toLocaleTimeString("zh-CN", { timeZone: "Asia/Shanghai" });
+    const target = testUserId.replace(/^qqbot:/i, "");
+    const [kindRaw, ...idParts] = target.split(":");
+    const kind = kindRaw.toLowerCase();
+    const targetId = idParts.join(":");
+    if (!targetId) {
+      return {
+        agentId, platform: "qqbot", ok: false,
+        error: `Invalid QQBot target: ${testUserId}`,
+        elapsed: Date.now() - startTime,
+      };
+    }
+
+    const url = kind === "group"
+      ? `${QQBOT_API_BASE}/v2/groups/${targetId}/messages`
+      : kind === "channel"
+        ? `${QQBOT_API_BASE}/channels/${targetId}/messages`
+        : `${QQBOT_API_BASE}/v2/users/${targetId}/messages`;
+
+    const body = kind === "channel"
+      ? { content: `[Platform Test] QQBot 联通测试 ✅ (${now})` }
+      : { content: `[Platform Test] QQBot 联通测试 ✅ (${now})`, msg_type: 0 };
+
+    const msgResp = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `QQBot ${tokenResult.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000),
+    });
+    const raw = await msgResp.text();
+
+    const elapsed = Date.now() - startTime;
+    const sourceLabel = recipientSource === "allowFrom" ? "allowFrom" : "session";
+    if (!msgResp.ok) {
+      return {
+        agentId, platform: "qqbot", ok: false,
+        error: `Send failed HTTP ${msgResp.status}: ${(raw || "").slice(0, 180)}`,
+        elapsed,
+      };
+    }
+
+    return {
+      agentId, platform: "qqbot", ok: true,
+      detail: `QQBot → DM sent to ${testUserId} (${elapsed}ms, via ${sourceLabel})`,
+      elapsed,
+    };
+  } catch (err: any) {
+    return {
+      agentId, platform: "qqbot", ok: false,
       error: (err.stderr || err.message || "Unknown error").slice(0, 300),
       elapsed: Date.now() - startTime,
     };
@@ -484,6 +703,7 @@ export async function POST() {
     const discordTestUser = discordAllowFrom[0] || null;
     const telegramConfig = channels.telegram || {};
     const whatsappConfig = channels.whatsapp || {};
+    const qqbotConfig = channels.qqbot;
 
     // Read gateway config early (needed for WhatsApp test)
     const gatewayPort = config.gateway?.port || 18789;
@@ -550,6 +770,16 @@ export async function POST() {
         const source: "session" | "allowFrom" | "none" =
           sessionUser ? "session" : (allowFromUser ? "allowFrom" : "none");
         platformTests.push(testWhatsapp(id, gatewayPort, gatewayToken, whatsappTestUser, source));
+      }
+
+      // QQBot: only test once, via `openclaw message send`
+      if (id === "main" && qqbotConfig && qqbotConfig.enabled !== false) {
+        const sessionUser = normalizeQqbotTarget(getQqbotDmUser(id));
+        const allowFromUser = normalizeQqbotTarget(getQqbotAllowlistUser(qqbotConfig));
+        const qqbotTestUser = sessionUser || allowFromUser || null;
+        const source: "session" | "allowFrom" | "none" =
+          sessionUser ? "session" : (allowFromUser ? "allowFrom" : "none");
+        platformTests.push(testQqbot(id, qqbotConfig, qqbotTestUser, source));
       }
     }
 

@@ -101,7 +101,7 @@ export async function POST() {
     }
 
     const results: DmSessionResult[] = [];
-    const platformsToTest = ["feishu", "discord", "telegram", "whatsapp"];
+    const platformsToTest = ["feishu", "discord", "telegram", "whatsapp", "qqbot"];
 
     for (const agent of agentList) {
       const id = agent.id;
