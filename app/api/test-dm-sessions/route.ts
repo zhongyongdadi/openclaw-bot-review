@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
-const CONFIG_PATH = path.join(OPENCLAW_HOME, "openclaw.json");
+import { OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
+import { parseApiJsonSafely, shouldFallbackToCli, testSessionViaCli } from "@/lib/session-test-fallback";
+const CONFIG_PATH = OPENCLAW_CONFIG_PATH;
 
 interface DmSessionResult {
   agentId: string;
@@ -65,11 +65,18 @@ async function testDmSession(
       signal: AbortSignal.timeout(100000),
     });
 
-    const data = await resp.json();
+    const rawText = await resp.text();
+    const data = parseApiJsonSafely(rawText);
     const elapsed = Date.now() - startTime;
 
     if (!resp.ok) {
-      return { agentId, platform, ok: false, error: data.error?.message || JSON.stringify(data), elapsed };
+      if (shouldFallbackToCli(resp, rawText)) {
+        const fallback = await testSessionViaCli(agentId);
+        return fallback.ok
+          ? { agentId, platform, ok: true, detail: `${fallback.reply || "OK"} · DM fallback`, elapsed: fallback.elapsed }
+          : { agentId, platform, ok: false, error: fallback.error || "Gateway route not found", elapsed: fallback.elapsed };
+      }
+      return { agentId, platform, ok: false, error: data?.error?.message || rawText || JSON.stringify(data), elapsed };
     }
 
     const reply = data.choices?.[0]?.message?.content || "";

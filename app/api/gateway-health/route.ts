@@ -1,14 +1,38 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
 import path from "path";
-import { execFile } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
+import { readJsonFileSync } from "@/lib/json";
+import { OPENCLAW_CONFIG_PATH } from "@/lib/openclaw-paths";
 
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
-const CONFIG_PATH = path.join(OPENCLAW_HOME, "openclaw.json");
+const CONFIG_PATH = OPENCLAW_CONFIG_PATH;
 const DEGRADED_LATENCY_MS = 1500;
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 let cachedOpenclawVersion: { value: string | null; expiresAt: number } | null = null;
+
+function quoteShellArg(arg: string): string {
+  if (/^[A-Za-z0-9_./:=@-]+$/.test(arg)) return arg;
+  return `"${arg.replace(/"/g, '""')}"`;
+}
+
+async function execOpenclaw(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const env = { ...process.env, FORCE_COLOR: "0" };
+
+  if (process.platform !== "win32") {
+    return execFileAsync("openclaw", args, {
+      maxBuffer: 10 * 1024 * 1024,
+      env,
+    });
+  }
+
+  const command = `openclaw ${args.map(quoteShellArg).join(" ")}`;
+  return execAsync(command, {
+    maxBuffer: 10 * 1024 * 1024,
+    env,
+    shell: "cmd.exe",
+  });
+}
 
 function parseJsonFromMixedOutput(output: string): any {
   for (let i = 0; i < output.length; i++) {
@@ -49,10 +73,7 @@ async function probeGatewayViaCli(token: string, timeoutMs = 5000): Promise<{ ok
   try {
     const args = ["gateway", "status", "--json", "--timeout", String(timeoutMs)];
     if (token) args.push("--token", token);
-    const { stdout, stderr } = await execFileAsync("openclaw", args, {
-      maxBuffer: 10 * 1024 * 1024,
-      env: { ...process.env, FORCE_COLOR: "0" },
-    });
+    const { stdout, stderr } = await execOpenclaw(args);
     const parsed = parseJsonFromMixedOutput(`${stdout}\n${stderr || ""}`);
     const ok = parsed?.rpc?.ok === true;
     const error =
@@ -66,16 +87,31 @@ async function probeGatewayViaCli(token: string, timeoutMs = 5000): Promise<{ ok
   }
 }
 
+async function probeGatewayViaWeb(port: number, token: string, timeoutMs = 5000): Promise<{ ok: boolean; error?: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const resp = await fetch(
+      `http://localhost:${port}/chat${token ? `?token=${encodeURIComponent(token)}` : ""}`,
+      { signal: controller.signal, cache: "no-store", redirect: "manual" },
+    );
+    return resp.status >= 200 && resp.status < 400
+      ? { ok: true }
+      : { ok: false, error: `HTTP ${resp.status}` };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "Failed to probe gateway web UI" };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function getOpenclawVersion(): Promise<string | undefined> {
   const now = Date.now();
   if (cachedOpenclawVersion && cachedOpenclawVersion.expiresAt > now) {
     return cachedOpenclawVersion.value || undefined;
   }
   try {
-    const { stdout } = await execFileAsync("openclaw", ["--version"], {
-      maxBuffer: 1024 * 1024,
-      env: { ...process.env, FORCE_COLOR: "0" },
-    });
+    const { stdout } = await execOpenclaw(["--version"]);
     const version = stdout.trim().split(/\s+/)[0] || null;
     cachedOpenclawVersion = { value: version, expiresAt: now + 60 * 60 * 1000 };
     return version || undefined;
@@ -89,10 +125,10 @@ export async function GET() {
   const startedAt = Date.now();
   try {
     const openclawVersion = await getOpenclawVersion();
-    const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
-    const config = JSON.parse(raw);
+    const config = readJsonFileSync<any>(CONFIG_PATH);
     const port = config.gateway?.port || 18789;
     const token = config.gateway?.auth?.token || "";
+    const webUrl = `http://localhost:${port}/chat${token ? '?token=' + encodeURIComponent(token) : ''}`;
 
     const url = `http://localhost:${port}/api/health`;
     const headers: Record<string, string> = {};
@@ -114,7 +150,22 @@ export async function GET() {
         status: responseMs > DEGRADED_LATENCY_MS ? "degraded" : "healthy",
         checkedAt,
         responseMs,
-        webUrl: `http://localhost:${port}/chat${token ? '?token=' + encodeURIComponent(token) : ''}`,
+        webUrl,
+      });
+    }
+
+    const web = await probeGatewayViaWeb(port, token, 5000);
+    if (web.ok) {
+      const checkedAt = Date.now();
+      const responseMs = checkedAt - startedAt;
+      return NextResponse.json({
+        ok: true,
+        data: null,
+        openclawVersion,
+        status: resp.status === 404 ? "healthy" : "degraded",
+        checkedAt,
+        responseMs,
+        webUrl,
       });
     }
 
@@ -130,7 +181,7 @@ export async function GET() {
         status: "healthy",
         checkedAt,
         responseMs,
-        webUrl: `http://localhost:${port}/chat${token ? '?token=' + encodeURIComponent(token) : ''}`,
+        webUrl,
       });
     }
 
@@ -152,26 +203,38 @@ export async function GET() {
         : err.message;
     const token = (() => {
       try {
-        const rawCfg = fs.readFileSync(CONFIG_PATH, "utf-8");
-        const cfg = JSON.parse(rawCfg);
+        const cfg = readJsonFileSync<any>(CONFIG_PATH);
         return cfg.gateway?.auth?.token || "";
       } catch {
         return "";
       }
     })();
+    const port = (() => {
+      try {
+        const cfg = readJsonFileSync<any>(CONFIG_PATH);
+        return cfg.gateway?.port || 18789;
+      } catch {
+        return 18789;
+      }
+    })();
+    const web = await probeGatewayViaWeb(port, token, 5000);
+    if (web.ok) {
+      const checkedAt = Date.now();
+      const responseMs = checkedAt - startedAt;
+      return NextResponse.json({
+        ok: true,
+        data: null,
+        openclawVersion,
+        status: "degraded",
+        checkedAt,
+        responseMs,
+        webUrl: `http://localhost:${port}/chat${token ? '?token=' + encodeURIComponent(token) : ''}`,
+      });
+    }
     const cli = await probeGatewayViaCli(token, 5000);
     const checkedAt = Date.now();
     const responseMs = checkedAt - startedAt;
     if (cli.ok) {
-      const port = (() => {
-        try {
-          const rawCfg = fs.readFileSync(CONFIG_PATH, "utf-8");
-          const cfg = JSON.parse(rawCfg);
-          return cfg.gateway?.port || 18789;
-        } catch {
-          return 18789;
-        }
-      })();
       return NextResponse.json({
         ok: true,
         data: null,

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
+import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
 const ACTIVE_GAP_MS = 2 * 60 * 1000; // 2 minutes — gaps longer than this count as idle
 
 // Server-side cache: 5 min TTL

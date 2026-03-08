@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
 
 // 配置文件路径：优先使用 OPENCLAW_HOME 环境变量，否则默认 ~/.openclaw
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
-const CONFIG_PATH = path.join(OPENCLAW_HOME, "openclaw.json");
+const CONFIG_PATH = OPENCLAW_CONFIG_PATH;
 const OPENCLAW_DIR = OPENCLAW_HOME;
 
 // 30秒内存缓存

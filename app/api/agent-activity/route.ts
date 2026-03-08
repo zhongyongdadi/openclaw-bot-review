@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { promises as fs, existsSync } from 'fs'
 import path from 'path'
-import os from 'os'
+import { parseJsonText } from '@/lib/json'
+import { OPENCLAW_AGENTS_DIR, OPENCLAW_CONFIG_PATH } from '@/lib/openclaw-paths'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -483,16 +484,15 @@ async function parseSubagents(agentSessionsDir: string, agentId: string): Promis
 }
 
 export async function GET() {
-  const openclawDir = path.join(os.homedir(), '.openclaw')
-  const configPath = path.join(openclawDir, 'openclaw.json')
-  const agentsDir = path.join(openclawDir, 'agents')
+  const configPath = OPENCLAW_CONFIG_PATH
+  const agentsDir = OPENCLAW_AGENTS_DIR
 
   const agents: AgentActivity[] = []
 
   try {
     if (existsSync(configPath)) {
       const configContent = await fs.readFile(configPath, 'utf8')
-      const config = JSON.parse(configContent)
+      const config = parseJsonText(configContent)
 
       const agentList = Array.isArray(config.agents) ? config.agents : config.agents?.list
       if (agentList && Array.isArray(agentList)) {

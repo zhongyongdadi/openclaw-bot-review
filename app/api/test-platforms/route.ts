@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
-const CONFIG_PATH = path.join(OPENCLAW_HOME, "openclaw.json");
+import { OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
+const CONFIG_PATH = OPENCLAW_CONFIG_PATH;
 const QQBOT_TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken";
 const QQBOT_API_BASE = "https://api.sgroup.qq.com";
 
@@ -641,53 +640,6 @@ async function testQqbot(
   }
 }
 
-// Agent session test: use Gateway chatCompletions API to send health check
-// When sessionKey is provided, message routes to that session (e.g. feishu DM session)
-async function testAgentSession(agentId: string, sessionKey: string | undefined, gatewayPort: number, gatewayToken: string): Promise<{ agentId: string; ok: boolean; reply?: string; error?: string; elapsed: number }> {
-  const startTime = Date.now();
-  try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${gatewayToken}`,
-      "x-openclaw-agent-id": agentId,
-    };
-    if (sessionKey) {
-      headers["x-openclaw-session-key"] = sessionKey;
-    }
-
-    const resp = await fetch(`http://127.0.0.1:${gatewayPort}/v1/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: `openclaw:${agentId}`,
-        messages: [{ role: "user", content: "Health check: reply with OK" }],
-        max_tokens: 64,
-      }),
-      signal: AbortSignal.timeout(100000),
-    });
-
-    const data = await resp.json();
-    const elapsed = Date.now() - startTime;
-
-    if (!resp.ok) {
-      return { agentId, ok: false, error: data.error?.message || JSON.stringify(data), elapsed };
-    }
-
-    const reply = data.choices?.[0]?.message?.content || "";
-    return {
-      agentId, ok: true,
-      reply: reply.slice(0, 200) || "(no reply)",
-      elapsed,
-    };
-  } catch (err: any) {
-    return {
-      agentId, ok: false,
-      error: err.message,
-      elapsed: Date.now() - startTime,
-    };
-  }
-}
-
 export async function POST() {
   try {
     const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
@@ -725,12 +677,10 @@ export async function POST() {
 
     // Phase 1: Platform API tests (parallel)
     const platformTests: Promise<PlatformTestResult>[] = [];
-    const agentIds: string[] = [];
     const testedFeishuAccounts = new Set<string>();
 
     for (const agent of agentList) {
       const id = agent.id;
-      agentIds.push(id);
 
       // Feishu
       const feishuBinding = bindings.find(
@@ -764,21 +714,21 @@ export async function POST() {
 
       // WhatsApp: only test once, via gateway
       if (id === "main" && whatsappConfig && whatsappConfig.enabled !== false) {
-        const sessionUser = getWhatsappDmUser(id);
+        const recentDmUser = getWhatsappDmUser(id);
         const allowFromUser = getWhatsappAllowlistUser(whatsappConfig);
-        const whatsappTestUser = sessionUser || allowFromUser || null;
+        const whatsappTestUser = recentDmUser || allowFromUser || null;
         const source: "session" | "allowFrom" | "none" =
-          sessionUser ? "session" : (allowFromUser ? "allowFrom" : "none");
+          recentDmUser ? "session" : (allowFromUser ? "allowFrom" : "none");
         platformTests.push(testWhatsapp(id, gatewayPort, gatewayToken, whatsappTestUser, source));
       }
 
       // QQBot: only test once, via `openclaw message send`
       if (id === "main" && qqbotConfig && qqbotConfig.enabled !== false) {
-        const sessionUser = normalizeQqbotTarget(getQqbotDmUser(id));
+        const recentDmUser = normalizeQqbotTarget(getQqbotDmUser(id));
         const allowFromUser = normalizeQqbotTarget(getQqbotAllowlistUser(qqbotConfig));
-        const qqbotTestUser = sessionUser || allowFromUser || null;
+        const qqbotTestUser = recentDmUser || allowFromUser || null;
         const source: "session" | "allowFrom" | "none" =
-          sessionUser ? "session" : (allowFromUser ? "allowFrom" : "none");
+          recentDmUser ? "session" : (allowFromUser ? "allowFrom" : "none");
         platformTests.push(testQqbot(id, qqbotConfig, qqbotTestUser, source));
       }
     }

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-
-const OPENCLAW_HOME = path.join(process.env.HOME || "/root", ".openclaw");
-const CONFIG_PATH = path.join(OPENCLAW_HOME, "openclaw.json");
+import { OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
+import { parseApiJsonSafely, shouldFallbackToCli, testSessionViaCli } from "@/lib/session-test-fallback";
+const CONFIG_PATH = OPENCLAW_CONFIG_PATH;
 
 export async function POST(req: Request) {
   try {
@@ -38,16 +38,26 @@ export async function POST(req: Request) {
         }),
         signal: AbortSignal.timeout(100000),
       });
-
-      const data = await resp.json();
+      const rawText = await resp.text();
+      const data = parseApiJsonSafely(rawText);
       const elapsed = Date.now() - startTime;
 
       if (!resp.ok) {
+        if (shouldFallbackToCli(resp, rawText)) {
+          const fallback = await testSessionViaCli(agentId);
+          return NextResponse.json({
+            status: fallback.ok ? "ok" : "error",
+            sessionKey,
+            elapsed: fallback.elapsed,
+            reply: fallback.reply,
+            error: fallback.error,
+          });
+        }
         return NextResponse.json({
           status: "error",
           sessionKey,
           elapsed,
-          error: data.error?.message || JSON.stringify(data),
+          error: data?.error?.message || rawText || JSON.stringify(data),
         });
       }
 

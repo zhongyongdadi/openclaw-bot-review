@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-
-const OPENCLAW_HOME = path.join(process.env.HOME || "/root", ".openclaw");
-const CONFIG_PATH = path.join(OPENCLAW_HOME, "openclaw.json");
+import { OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
+import { parseApiJsonSafely, shouldFallbackToCli, testSessionViaCli } from "@/lib/session-test-fallback";
+const CONFIG_PATH = OPENCLAW_CONFIG_PATH;
 
 function hasEmbeddedHttpError(reply: string): boolean {
   // Some providers return error text in content while gateway still returns HTTP 200.
@@ -50,10 +50,18 @@ export async function POST() {
           }),
           signal: AbortSignal.timeout(100000),
         });
-        const data = await resp.json();
+        const rawText = await resp.text();
+        const data = parseApiJsonSafely(rawText);
         const elapsed = Date.now() - startTime;
         if (!resp.ok) {
-          results.push({ agentId, ok: false, error: data.error?.message || "API error", elapsed });
+          if (shouldFallbackToCli(resp, rawText)) {
+            const fallback = await testSessionViaCli(agentId);
+            results.push(fallback.ok
+              ? { agentId, ok: true, reply: fallback.reply, elapsed: fallback.elapsed }
+              : { agentId, ok: false, error: fallback.error || "Gateway route not found", elapsed: fallback.elapsed });
+          } else {
+            results.push({ agentId, ok: false, error: data?.error?.message || rawText || "API error", elapsed });
+          }
         } else {
           const reply = data.choices?.[0]?.message?.content || "";
           const clippedReply = reply.slice(0, 200) || "(no reply)";

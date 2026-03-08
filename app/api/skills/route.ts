@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
+import { getOpenclawPackageCandidates, OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
 
 // Find OpenClaw package directory
 function findOpenClawPkg(): string {
   // Check common locations
-  const candidates = [
-    path.join(process.env.HOME || "", ".nvm/versions/node", process.version, "lib/node_modules/openclaw"),
-    "/usr/local/lib/node_modules/openclaw",
-    "/usr/lib/node_modules/openclaw",
-  ];
+  const candidates = getOpenclawPackageCandidates();
   for (const c of candidates) {
     if (fs.existsSync(path.join(c, "package.json"))) return c;
   }
@@ -148,7 +143,7 @@ export async function GET() {
     }
 
     // 5. Get agent info for display
-    const configPath = path.join(OPENCLAW_HOME, "openclaw.json");
+    const configPath = OPENCLAW_CONFIG_PATH;
     const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
     const agentList = config.agents?.list || [];
     const agentMap: Record<string, { name: string; emoji: string }> = {};
