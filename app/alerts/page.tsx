@@ -26,6 +26,12 @@ interface Agent {
 }
 
 const RULE_DESCRIPTIONS: Record<string, Record<string, string>> = {
+  "zh-TW": {
+    model_unavailable: "模型不可用 - 當測試模型失敗時觸發",
+    bot_no_response: "Bot 長時間無回應 - 當機器人超過設定時間未回應時觸發",
+    message_failure_rate: "訊息失敗率升高 - 當訊息失敗率超過閾值時觸發",
+    cron连续_failure: "Cron 連續失敗 - 當定時任務連續失敗超過設定次數時觸發",
+  },
   zh: {
     model_unavailable: "模型不可用 - 当测试模型失败时触发",
     bot_no_response: "Bot 长时间无响应 - 当机器人超过设定时间未响应时触发",
@@ -60,6 +66,28 @@ export default function AlertsPage() {
   }, [config?.checkInterval]);
 
   const ruleDescriptions = RULE_DESCRIPTIONS[locale as keyof typeof RULE_DESCRIPTIONS] || RULE_DESCRIPTIONS.zh;
+  const isEnglish = locale === "en";
+  const isTraditionalChinese = locale === "zh-TW";
+  const timeLocale = isEnglish ? "en-US" : isTraditionalChinese ? "zh-TW" : "zh-CN";
+  const ui = {
+    minutes5: isEnglish ? "5 minutes" : isTraditionalChinese ? "5 分鐘" : "5 分钟",
+    minutes10: isEnglish ? "10 minutes" : isTraditionalChinese ? "10 分鐘" : "10 分钟",
+    minutes30: isEnglish ? "30 minutes" : isTraditionalChinese ? "30 分鐘" : "30 分钟",
+    hour1: isEnglish ? "1 hour" : isTraditionalChinese ? "1 小時" : "1 小时",
+    hours2: isEnglish ? "2 hours" : isTraditionalChinese ? "2 小時" : "2 小时",
+    hours5: isEnglish ? "5 hours" : isTraditionalChinese ? "5 小時" : "5 小时",
+    checking: isEnglish ? "⏳ Checking..." : isTraditionalChinese ? "⏳ 檢查中..." : "⏳ 检查中...",
+    checkNow: isEnglish ? "🔄 Check Now" : isTraditionalChinese ? "🔄 立即檢查" : "🔄 立即检查",
+    alertsTriggered: isEnglish ? "⚠️ Alerts Triggered" : isTraditionalChinese ? "⚠️ 警報觸發" : "⚠️ 告警触发",
+    checkingAlerts: isEnglish ? "⏳ Checking alerts..." : isTraditionalChinese ? "⏳ 正在檢查警報..." : "⏳ 正在检查告警...",
+    timeout: isEnglish ? "Timeout (s):" : isTraditionalChinese ? "超時 (秒):" : "超时 (秒):",
+    failureRate: isEnglish ? "Failure rate (%):" : isTraditionalChinese ? "失敗率 (%):" : "失败率 (%):",
+    maxFailures: isEnglish ? "Max failures:" : isTraditionalChinese ? "最大失敗數:" : "最大失败数:",
+    threshold: isEnglish ? "Threshold:" : isTraditionalChinese ? "閾值:" : "阈值:",
+    monitor: isEnglish ? "Monitor:" : isTraditionalChinese ? "檢測機器人:" : "检测机器人:",
+    emptyMeansAll: isEnglish ? "(empty = all)" : isTraditionalChinese ? "(不選則檢測所有)" : "(不选则检测所有)",
+    saved: isEnglish ? "Saved" : isTraditionalChinese ? "已保存" : "已保存",
+  };
 
   // 加载配置
   useEffect(() => {
@@ -86,7 +114,7 @@ export default function AlertsPage() {
         .then((data) => {
           if (data.results && data.results.length > 0) {
             setCheckResults(data.results);
-            setLastCheckTime(new Date().toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US"));
+            setLastCheckTime(new Date().toLocaleTimeString(timeLocale));
           }
         })
         .catch(console.error)
@@ -105,7 +133,7 @@ export default function AlertsPage() {
       .then((data) => {
         if (data.results && data.results.length > 0) {
           setCheckResults(data.results);
-          setLastCheckTime(new Date().toLocaleTimeString(locale === "zh" ? "zh-CN" : "en-US"));
+          setLastCheckTime(new Date().toLocaleTimeString(timeLocale));
         }
       })
       .catch(console.error)
@@ -241,12 +269,12 @@ export default function AlertsPage() {
                 onChange={(e) => handleIntervalChange(Number(e.target.value))}
                 className="px-2 py-1 text-sm rounded border border-[var(--border)] bg-[var(--card)] text-[var(--text)]"
               >
-                <option value={5}>{locale === "zh" ? "5 分钟" : "5 minutes"}</option>
-                <option value={10}>{locale === "zh" ? "10 分钟" : "10 minutes"}</option>
-                <option value={30}>{locale === "zh" ? "30 分钟" : "30 minutes"}</option>
-                <option value={60}>{locale === "zh" ? "1 小时" : "1 hour"}</option>
-                <option value={120}>{locale === "zh" ? "2 小时" : "2 hours"}</option>
-                <option value={300}>{locale === "zh" ? "5 小时" : "5 hours"}</option>
+                <option value={5}>{ui.minutes5}</option>
+                <option value={10}>{ui.minutes10}</option>
+                <option value={30}>{ui.minutes30}</option>
+                <option value={60}>{ui.hour1}</option>
+                <option value={120}>{ui.hours2}</option>
+                <option value={300}>{ui.hours5}</option>
               </select>
             </div>
           )}
@@ -257,7 +285,7 @@ export default function AlertsPage() {
               disabled={checking}
               className="px-4 py-2 rounded-lg bg-[var(--card)] border border-[var(--border)] text-sm hover:border-[var(--accent)] transition disabled:opacity-50"
             >
-              {checking ? (locale === "zh" ? "⏳ 检查中..." : "⏳ Checking...") : (locale === "zh" ? "🔄 立即检查" : "🔄 Check Now")}
+              {checking ? ui.checking : ui.checkNow}
             </button>
           )}
           <Link
@@ -274,7 +302,7 @@ export default function AlertsPage() {
         <div className="p-4 rounded-xl border border-yellow-500/30 bg-yellow-500/10 mb-6">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-semibold text-yellow-400">
-              {locale === "zh" ? "⚠️ 告警触发" : "⚠️ Alerts Triggered"} ({checkResults.length})
+              {ui.alertsTriggered} ({checkResults.length})
             </h3>
             {lastCheckTime && <span className="text-xs text-[var(--text-muted)]">{lastCheckTime}</span>}
           </div>
@@ -288,7 +316,7 @@ export default function AlertsPage() {
 
       {config.enabled && checking && (
         <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--card)] mb-6 text-center text-[var(--text-muted)]">
-          {locale === "zh" ? "⏳ 正在检查告警..." : "⏳ Checking alerts..."}
+          {ui.checkingAlerts}
         </div>
       )}
 
@@ -375,10 +403,10 @@ export default function AlertsPage() {
                 {rule.threshold !== undefined && rule.id !== "bot_no_response" && (
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-[var(--text-muted)]">
-                      {rule.id === "bot_no_response" ? (locale === "zh" ? "超时 (秒):" : "Timeout (s):") : 
-                       rule.id === "message_failure_rate" ? (locale === "zh" ? "失败率 (%):" : "Failure rate (%):") :
-                       rule.id === "cron连续_failure" ? (locale === "zh" ? "最大失败数:" : "Max failures:") :
-                       (locale === "zh" ? "阈值:" : "Threshold:")}
+                      {rule.id === "bot_no_response" ? ui.timeout :
+                       rule.id === "message_failure_rate" ? ui.failureRate :
+                       rule.id === "cron连续_failure" ? ui.maxFailures :
+                       ui.threshold}
                     </span>
                     <input
                       type="number"
@@ -392,7 +420,7 @@ export default function AlertsPage() {
                 {rule.id === "bot_no_response" && rule.threshold !== undefined && (
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-[var(--text-muted)]">
-                      {locale === "zh" ? "超时 (秒):" : "Timeout (s):"}
+                      {ui.timeout}
                     </span>
                     <input
                       type="number"
@@ -409,7 +437,7 @@ export default function AlertsPage() {
                 <div className="mt-3 pt-3 border-t border-[var(--border)]">
                   <div className="flex flex-wrap gap-2 items-center">
                     <span className="text-xs text-[var(--text-muted)]">
-                      {locale === "zh" ? "检测机器人:" : "Monitor:"}
+                      {ui.monitor}
                     </span>
                     {agents.map((agent) => {
                       const selected = rule.targetAgents?.includes(agent.id) ?? true;
@@ -454,7 +482,7 @@ export default function AlertsPage() {
                       );
                     })}
                     <span className="text-xs text-[var(--text-muted)] ml-2">
-                      {locale === "zh" ? "(不选则检测所有)" : "(empty = all)"}
+                      {ui.emptyMeansAll}
                     </span>
                   </div>
                 </div>
@@ -467,7 +495,7 @@ export default function AlertsPage() {
       {/* 保存提示 */}
       {saved && (
         <div className="fixed bottom-8 right-8 px-4 py-2 rounded-lg bg-green-500 text-white text-sm animate-fade-in">
-          ✓ {locale === "zh" ? "已保存" : "Saved"}
+          ✓ {ui.saved}
         </div>
       )}
     </main>
