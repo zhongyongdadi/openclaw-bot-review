@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
+import { OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
 const ALERTS_CONFIG_PATH = path.join(OPENCLAW_HOME, "alerts.json");
 
 interface AlertRule {
@@ -37,7 +36,7 @@ function getAlertConfig(): AlertConfig {
 }
 
 function getOpenclawConfig() {
-  const configPath = path.join(OPENCLAW_HOME, "openclaw.json");
+  const configPath = OPENCLAW_CONFIG_PATH;
   try {
     const raw = fs.readFileSync(configPath, "utf-8");
     return JSON.parse(raw);
@@ -55,7 +54,7 @@ function saveAlertConfig(config: AlertConfig): void {
 }
 
 function getGatewayConfig() {
-  const configPath = path.join(OPENCLAW_HOME, "openclaw.json");
+  const configPath = OPENCLAW_CONFIG_PATH;
   try {
     const raw = fs.readFileSync(configPath, "utf-8");
     const config = JSON.parse(raw);

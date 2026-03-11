@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { DEFAULT_MODEL_PROBE_TIMEOUT_MS, parseModelRef, probeModel } from "@/lib/model-probe";
+import { OPENCLAW_CONFIG_PATH, OPENCLAW_HOME } from "@/lib/openclaw-paths";
 
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
-const CONFIG_PATH = path.join(OPENCLAW_HOME, "openclaw.json");
+const CONFIG_PATH = OPENCLAW_CONFIG_PATH;
 const PROBE_TIMEOUT_MS = DEFAULT_MODEL_PROBE_TIMEOUT_MS;
 
 type AgentConfig = {
@@ -98,4 +98,3 @@ export async function POST() {
 export async function GET() {
   return POST();
 }
-

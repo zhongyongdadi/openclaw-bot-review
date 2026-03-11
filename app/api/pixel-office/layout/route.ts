@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
-import os from 'os'
+import { OPENCLAW_PIXEL_OFFICE_DIR } from '@/lib/openclaw-paths'
 
-const LAYOUT_DIR = path.join(os.homedir(), '.openclaw', 'pixel-office')
+const LAYOUT_DIR = OPENCLAW_PIXEL_OFFICE_DIR
 const LAYOUT_FILE = path.join(LAYOUT_DIR, 'layout.json')
 
 export async function GET() {

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { promises as fs, existsSync } from 'fs'
 import path from 'path'
-import os from 'os'
+import { parseJsonText } from '@/lib/json'
+import { OPENCLAW_AGENTS_DIR, OPENCLAW_CONFIG_PATH } from '@/lib/openclaw-paths'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -37,6 +38,30 @@ export interface AgentActivity {
   toolStatus?: string
   lastActive: number
   subagents?: SubagentInfo[]
+}
+
+type AgentConfigEntry = {
+  id: string
+  name?: string
+  emoji?: string
+  identity?: { emoji?: string }
+}
+
+async function loadAgentList(config: any, agentsDir: string): Promise<AgentConfigEntry[]> {
+  const configured = Array.isArray(config?.agents?.list)
+    ? config.agents.list.filter((agent: any) => agent && typeof agent.id === 'string' && agent.id)
+    : []
+  if (configured.length > 0) return configured
+
+  try {
+    if (!existsSync(agentsDir)) return []
+    const dirs = await fs.readdir(agentsDir, { withFileTypes: true })
+    return dirs
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.'))
+      .map((entry) => ({ id: entry.name }))
+  } catch {
+    return []
+  }
 }
 
 function isSubtaskDescription(desc: string): boolean {
@@ -483,19 +508,18 @@ async function parseSubagents(agentSessionsDir: string, agentId: string): Promis
 }
 
 export async function GET() {
-  const openclawDir = path.join(os.homedir(), '.openclaw')
-  const configPath = path.join(openclawDir, 'openclaw.json')
-  const agentsDir = path.join(openclawDir, 'agents')
+  const configPath = OPENCLAW_CONFIG_PATH
+  const agentsDir = OPENCLAW_AGENTS_DIR
 
   const agents: AgentActivity[] = []
 
   try {
     if (existsSync(configPath)) {
       const configContent = await fs.readFile(configPath, 'utf8')
-      const config = JSON.parse(configContent)
+      const config = parseJsonText(configContent)
 
-      const agentList = Array.isArray(config.agents) ? config.agents : config.agents?.list
-      if (agentList && Array.isArray(agentList)) {
+      const agentList = await loadAgentList(config, agentsDir)
+      if (agentList.length > 0) {
         const now = Date.now()
 
         for (const agent of agentList) {

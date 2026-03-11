@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
+import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
 
 // 30秒内存缓存
 let statsCache: { data: any; ts: number } | null = null;

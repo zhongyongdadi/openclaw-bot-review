@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
-
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
+import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
 
 // 状态: working(2分钟内有assistant消息) / online(10分钟内) / idle(24小时内) / offline(超过24小时)
 type AgentState = "working" | "online" | "idle" | "offline";

@@ -1,9 +1,11 @@
-import fs from "fs";
 import path from "path";
-import { execFile } from "child_process";
+import { exec, execFile } from "child_process";
 import { promisify } from "util";
+import { readJsonFileSync } from "@/lib/json";
+import { OPENCLAW_HOME } from "@/lib/openclaw-paths";
 
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 
 export const DEFAULT_MODEL_PROBE_TIMEOUT_MS = 15000;
 
@@ -55,8 +57,30 @@ interface ProbeModelParams {
   timeoutMs?: number;
 }
 
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(process.env.HOME || "", ".openclaw");
 const MODELS_PATH = path.join(OPENCLAW_HOME, "agents", "main", "agent", "models.json");
+
+function quoteShellArg(arg: string): string {
+  if (/^[A-Za-z0-9_./:=@-]+$/.test(arg)) return arg;
+  return `"${arg.replace(/"/g, '""')}"`;
+}
+
+async function execOpenclaw(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const env = { ...process.env, FORCE_COLOR: "0" };
+
+  if (process.platform !== "win32") {
+    return execFileAsync("openclaw", args, {
+      maxBuffer: 10 * 1024 * 1024,
+      env,
+    });
+  }
+
+  const command = `openclaw ${args.map(quoteShellArg).join(" ")}`;
+  return execAsync(command, {
+    maxBuffer: 10 * 1024 * 1024,
+    env,
+    shell: "cmd.exe",
+  });
+}
 
 function parseJsonFromMixedOutput(output: string): any {
   for (let i = 0; i < output.length; i++) {
@@ -95,8 +119,7 @@ function parseJsonFromMixedOutput(output: string): any {
 
 function loadProviderConfig(providerId: string): ProviderConfig | null {
   try {
-    const raw = fs.readFileSync(MODELS_PATH, "utf-8");
-    const parsed = JSON.parse(raw);
+    const parsed = readJsonFileSync<any>(MODELS_PATH);
     const providers = parsed?.providers;
     if (!providers || typeof providers !== "object") return null;
     const exact = providers[providerId];
@@ -281,9 +304,7 @@ async function probeModelDirect(params: ProbeModelParams): Promise<DirectProbeRe
 async function probeProviderViaOpenclaw(params: ProbeModelParams): Promise<ModelProbeOutcome> {
   const timeoutMs = params.timeoutMs ?? DEFAULT_MODEL_PROBE_TIMEOUT_MS;
   const startedAt = Date.now();
-  const { stdout, stderr } = await execFileAsync(
-    "openclaw",
-    [
+  const { stdout, stderr } = await execOpenclaw([
       "models",
       "status",
       "--probe",
@@ -292,12 +313,7 @@ async function probeProviderViaOpenclaw(params: ProbeModelParams): Promise<Model
       String(timeoutMs),
       "--probe-provider",
       String(params.providerId),
-    ],
-    {
-      maxBuffer: 10 * 1024 * 1024,
-      env: { ...process.env, FORCE_COLOR: "0" },
-    }
-  );
+    ]);
   const parsed = parseJsonFromMixedOutput(`${stdout}\n${stderr || ""}`);
   const results: ProbeResult[] = parsed?.auth?.probes?.results || [];
   const fullModel = `${params.providerId}/${params.modelId}`;
@@ -349,4 +365,3 @@ export async function probeModel(params: ProbeModelParams): Promise<ModelProbeOu
   }
   return probeProviderViaOpenclaw(params);
 }
-
