@@ -1082,6 +1082,18 @@ export class OfficeState {
     ch.bubbleType = null
   }
 
+  removeAgentImmediately(id: number): void {
+    const ch = this.characters.get(id)
+    if (!ch) return
+    if (ch.seatId) {
+      const seat = this.seats.get(ch.seatId)
+      if (seat) seat.assigned = false
+    }
+    if (this.selectedAgentId === id) this.selectedAgentId = null
+    if (this.cameraFollowId === id) this.cameraFollowId = null
+    this.characters.delete(id)
+  }
+
   /** Find seat uid at a given tile position, or null */
   getSeatAtTile(col: number, row: number): string | null {
     for (const [uid, seat] of this.seats) {
@@ -1343,6 +1355,31 @@ export class OfficeState {
     }
     for (const key of toRemove) {
       this.subagentIdMap.delete(key)
+    }
+  }
+
+  removeAllSubagentsImmediately(parentAgentId: number): void {
+    const toRemove: string[] = []
+    const toDeleteIds: number[] = []
+    for (const [key, id] of this.subagentIdMap) {
+      const meta = this.subagentMeta.get(id)
+      if (!meta || meta.parentAgentId !== parentAgentId) continue
+      const ch = this.characters.get(id)
+      if (ch?.seatId) {
+        const seat = this.seats.get(ch.seatId)
+        if (seat) seat.assigned = false
+      }
+      if (this.selectedAgentId === id) this.selectedAgentId = null
+      if (this.cameraFollowId === id) this.cameraFollowId = null
+      this.subagentMeta.delete(id)
+      toRemove.push(key)
+      toDeleteIds.push(id)
+    }
+    for (const key of toRemove) {
+      this.subagentIdMap.delete(key)
+    }
+    for (const id of toDeleteIds) {
+      this.characters.delete(id)
     }
   }
 

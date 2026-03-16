@@ -57,6 +57,10 @@ export function syncAgentsToOffice(
     }
 
     let charId = agentIdMap.get(activity.agentId)
+    if (charId !== undefined && !office.characters.has(charId)) {
+      agentIdMap.delete(activity.agentId)
+      charId = undefined
+    }
     if (charId === undefined) {
       charId = nextIdRef.current++
       agentIdMap.set(activity.agentId, charId)

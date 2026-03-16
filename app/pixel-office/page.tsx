@@ -462,8 +462,8 @@ export default function PixelOfficePage() {
     if (!officeReady || !office || cachedAgents.length === 0) return
 
     for (const [agentId, charId] of agentIdMapRef.current) {
-      office.removeAllSubagents(charId)
-      office.removeAgent(charId)
+      office.removeAllSubagentsImmediately(charId)
+      office.removeAgentImmediately(charId)
       agentIdMapRef.current.delete(agentId)
     }
     nextIdRef.current.current = 1
