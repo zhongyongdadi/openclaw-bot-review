@@ -345,6 +345,13 @@ export async function GET() {
     }
     const discordDmAllowFrom = channels.discord?.dm?.allowFrom || [];
 
+    // 已绑定给其他 agent 的 channel，main agent 不应自动展示
+    const channelsBoundToOthers = new Set<string>(
+      bindings
+        .filter((b: any) => b.agentId !== "main" && b.match?.channel)
+        .map((b: any) => b.match.channel)
+    );
+
     // 构建 agent 详情
     const agents = await Promise.all(agentList.map(async (agent: any) => {
       const id = agent.id;
@@ -392,9 +399,10 @@ export async function GET() {
           addPlatform({ name: "feishu", accountId: "main", appId, ...(userOpenId && { botOpenId: userOpenId }) });
         }
 
-        // main agent 默认展示所有已启用 channel（feishu 已单独处理）
+        // main agent 默认展示所有已启用 channel（feishu 已单独处理，已绑定给其他 agent 的跳过）
         for (const channelName of enabledChannelNames) {
           if (channelName === "feishu") continue;
+          if (channelsBoundToOthers.has(channelName)) continue;
           const botUserId = directPeerIdsByChannel[channelName]?.[id]
             || (channelName === "discord" ? (discordDmAllowFrom[0] || null) : null);
           addPlatform({ name: channelName, ...(botUserId && { botUserId }) });
