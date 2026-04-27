@@ -31,6 +31,25 @@ type CronStoreJob = {
   }
 }
 
+type CronRunEvent = {
+  ts?: number
+  jobId?: string
+  action?: string
+  status?: string
+  error?: string
+  summary?: string
+  delivered?: boolean
+  deliveryStatus?: string
+  deliveryError?: string
+  sessionId?: string
+  sessionKey?: string
+  runAtMs?: number
+  durationMs?: number
+  nextRunAtMs?: number
+  model?: string
+  provider?: string
+}
+
 export interface SubagentActivityEvent {
   key: string
   text: string
@@ -208,6 +227,25 @@ function deriveCronSummaryFromJob(job: CronStoreJob): string | undefined {
         ? job.payload.text
         : ''
   return payloadText ? truncateSummary(payloadText) : undefined
+}
+
+function resolveCronRunsPath(jobId: string): string {
+  return path.join(OPENCLAW_HOME, 'cron', 'runs', `${jobId}.jsonl`)
+}
+
+async function loadLastCronRun(jobId: string): Promise<CronRunEvent | null> {
+  const runsPath = resolveCronRunsPath(jobId)
+  if (!existsSync(runsPath)) return null
+  try {
+    const lines = (await fs.readFile(runsPath, 'utf8')).split('\n').filter((l) => l.trim())
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const event = JSON.parse(lines[i]) as CronRunEvent
+      if (event.action === 'finished') return event
+    }
+  } catch {
+    // Ignore
+  }
+  return null
 }
 
 function mapCronStatus(status: string | undefined): 'success' | 'running' | 'failed' {
@@ -734,6 +772,7 @@ async function parseCronJobs(agentSessionsDir: string, cronJobsForAgent: CronSto
         sessionId: (meta as any).sessionId as string,
         updatedAt: typeof (meta as any).updatedAt === 'number' ? (meta as any).updatedAt : 0,
         label: typeof (meta as any).label === 'string' ? (meta as any).label : undefined,
+        runtimeMs: typeof (meta as any).runtimeMs === 'number' ? (meta as any).runtimeMs : undefined,
       }))
       .sort((a, b) => b.updatedAt - a.updatedAt)
 
@@ -750,17 +789,40 @@ async function parseCronJobs(agentSessionsDir: string, cronJobsForAgent: CronSto
 
     const fallbackLabel = latest?.sessionKey?.split(':cron:')[1] || job.id
     const state = job.state || {}
+
+    // Primary source: cron runs log
+    const lastRun = await loadLastCronRun(job.id)
+
+    // Merge: runs > store > transcript
+    const lastStatus = lastRun?.status
+      ? mapCronStatus(lastRun.status)
+      : mapCronStatus(state.lastStatus) || transcriptStatus?.lastStatus || 'failed'
+
+    const lastSummary = lastRun?.error
+      ? truncateSummary(lastRun.error)
+      : lastRun?.summary
+        ? truncateSummary(lastRun.summary)
+        : deriveCronSummaryFromJob(job) || transcriptStatus?.lastSummary
+
+    const isRunning = !lastRun && (transcriptStatus?.isRunning || mapCronStatus(state.lastStatus) === 'running')
+
+    // Count consecutive failures from runs log if store doesn't track it
+    let consecutiveFailures = typeof state.consecutiveErrors === 'number' ? state.consecutiveErrors : 0
+    if (consecutiveFailures === 0 && lastRun?.status === 'ok') {
+      consecutiveFailures = 0
+    }
+
     cronJobs.push({
       key: latest?.sessionKey?.includes(':run:') ? latest.sessionKey.split(':run:')[0] : latest?.sessionKey || `agent:${inferCronOwnerAgentId(job)}:cron:${job.id}`,
       jobId: job.id,
       label: normalizeCronLabel(job.name || latest?.label, fallbackLabel),
-      isRunning: transcriptStatus?.isRunning || mapCronStatus(state.lastStatus) === 'running',
-      lastRunAt: typeof state.lastRunAtMs === 'number' ? state.lastRunAtMs : latest?.updatedAt || 0,
-      nextRunAt: typeof state.nextRunAtMs === 'number' ? state.nextRunAtMs : undefined,
-      durationMs: typeof state.lastDurationMs === 'number' ? state.lastDurationMs : transcriptStatus?.durationMs,
-      lastStatus: transcriptStatus?.lastStatus || mapCronStatus(state.lastStatus),
-      lastSummary: transcriptStatus?.lastSummary || deriveCronSummaryFromJob(job),
-      consecutiveFailures: typeof state.consecutiveErrors === 'number' ? state.consecutiveErrors : 0,
+      isRunning,
+      lastRunAt: typeof state.lastRunAtMs === 'number' ? state.lastRunAtMs : (lastRun?.runAtMs ?? latest?.updatedAt ?? 0),
+      nextRunAt: typeof state.nextRunAtMs === 'number' ? state.nextRunAtMs : (typeof lastRun?.nextRunAtMs === 'number' ? lastRun.nextRunAtMs : undefined),
+      durationMs: typeof state.lastDurationMs === 'number' ? state.lastDurationMs : (lastRun?.durationMs ?? latest?.runtimeMs ?? transcriptStatus?.durationMs),
+      lastStatus,
+      lastSummary,
+      consecutiveFailures,
     })
   }
 
@@ -808,7 +870,7 @@ export async function GET() {
 
           let state: 'idle' | 'working' | 'waiting' | 'offline'
           const timeDiff = now - lastActive
-          if (lastActive === 0 || timeDiff > 10 * 60 * 1000) {
+          if (lastActive === 0 || timeDiff > 8 * 60 * 60 * 1000) {
             state = 'offline'
           } else if (timeDiff <= 2 * 60 * 1000) {
             state = 'working'
